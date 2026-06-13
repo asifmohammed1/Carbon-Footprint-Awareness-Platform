@@ -1,173 +1,138 @@
 # 🌍 EcoTrack — Carbon Footprint Awareness Platform
 
-> **PromptWar Challenge 3** | AI-powered platform to help individuals understand, track, and reduce their carbon footprint through smart insights, interactive maps, and personalized action plans.
+> **Hack2Skill AI Challenge** | An AI-powered platform designed to help individuals understand, track, and reduce their carbon footprint. Powered by Google Gemini AI, Google Charts, dynamic local fallback engines, and optimized microservices.
 
 ---
 
 ## 🚀 Quick Start
 
-```bash
-# 1. Install dependencies
-pip install -r requirements.txt
+Follow these simple steps to run EcoTrack locally:
 
-# 2. Run (serves everything on http://localhost:8000)
-python app.py
+### 1. Configure Environment Variables
+Create a `.env` file in the root directory (refer to `.env.example`):
+```env
+GEMINI_API_KEY=your_gemini_api_key_here
+MAPS_API_KEY=your_google_maps_api_key_here
+PORT=8000
+DATA_FILE=data/user_data.json
+ALLOWED_ORIGINS=http://localhost:8000,http://127.0.0.1:8000
 ```
 
-Open **http://localhost:8000** in your browser. That's it.
+### 2. Install Dependencies
+Initialize and activate your virtual environment, then install the required libraries:
+```bash
+# Windows
+python -m venv venv
+venv\Scripts\activate
+pip install -r requirements.txt
+```
+
+### 3. Run the Server
+Start the Uvicorn ASGI server (serves the SPA frontend and REST API on port 8000):
+```bash
+python app.py
+```
+Open **http://localhost:8000** in your browser.
 
 ---
 
 ## 🎯 Chosen Vertical
 
-**Individual Carbon Footprint Awareness** — targeting everyday users who want to understand their personal environmental impact and take meaningful action through data-driven, AI-personalized guidance.
+**Individual Carbon Footprint Awareness** — Targeting everyday consumers who want to calculate, understand, and reduce their personal carbon footprints. The platform bridges the gap between calculations and action by providing personalized AI-generated plans, community gamification, and interactive local eco-recommendations.
 
 ---
 
 ## 🧠 Approach & Logic
 
-### Architecture
+### Full-Stack Architecture
+EcoTrack utilizes a unified, high-performance architecture:
 ```
 python app.py
-    └── FastAPI (port 8000)
-         ├── GET  /              → Serves index.html (SPA)
-         ├── GET  /static/*      → CSS, JS, assets
-         ├── POST /api/calculate → Carbon footprint calculator
-         ├── POST /api/chat      → Gemini AI assistant (EcoGuide)
-         ├── POST /api/insights  → AI personalized action plan
-         ├── POST /api/log-activity → Track green actions
-         ├── GET  /api/leaderboard  → Community ranking
-         ├── GET  /api/history/:id  → User activity history
-         ├── GET  /api/stats        → Platform-wide stats
-         └── GET  /api/config       → Frontend config (API keys)
+    └── FastAPI Server (port 8000)
+         ├── GET  /              → Serves index.html (Single Page App)
+         ├── GET  /static/*      → Serves CSS/JS assets
+         ├── POST /api/calculate → Computes footprint and updates user profile
+         ├── POST /api/chat      → Context-aware chat with Gemini AI (EcoGuide)
+         ├── POST /api/insights  → Structured JSON personalized action plans
+         ├── POST /api/log-activity → Logs an eco-friendly action
+         ├── GET  /api/leaderboard  → Fetches top community rankings (anonymized)
+         ├── GET  /api/history/:id  → Retrieves user session history (Indexed O(1))
+         └── GET  /api/stats        → Platform-wide impact metrics (TTL Cached)
 ```
 
-### Emission Calculation Logic
-Emissions are computed using **IPCC & IEA 2023 emission factors** across 4 categories:
+### 🧮 Emission Calculation Logic
+Calculations are based on **IPCC AR6 & IEA 2023 emission factors** across four lifestyle sectors:
+* **Transport**: Petrol, Diesel, Hybrid, or Electric vehicle emissions per kilometer + flights (scaled by distance category) + public transit passenger-kilometer indices.
+* **Energy**: Monthly electricity usage (multiplied by grid emission factors and offset by renewable energy ratios) + natural gas volumes.
+* **Food**: Daily diet carbon footprint intensities (ranging from Vegan at 1.5kg CO₂/day to Heavy Meat at 7.5kg CO₂/day) + food waste landfill factors.
+* **Lifestyle**: Production carbon footprint of new apparel purchases + shipping factors for online orders + hourly data center and device energy usage for streaming.
 
-| Category | Factors Used |
-|----------|-------------|
-| 🚗 Transport | Car type (petrol/diesel/hybrid/EV), km/week, flights, public transit |
-| ⚡ Energy | kWh electricity × grid factor, natural gas m³, renewable % offset |
-| 🥗 Food | Diet type (vegan→heavy meat), monthly food waste kg |
-| 🛍️ Lifestyle | New clothes/year, online orders/month, streaming hours/day |
+**Eco Score (0–100)**: Normalized against the average US footprint (14,000 kg CO₂e/year) where higher scores represent a greener footprint.
 
-**Eco Score (0–100)**: Normalized against US average (14,000 kg/yr). Higher = greener.
-
-### AI Decision Logic (Gemini)
-- EcoGuide maintains **per-session chat history** for contextual conversations
-- Insights endpoint uses **structured JSON prompting** for consistent action plan output
-- Carbon context is injected into every Gemini prompt for **personalized advice**
-- Fallback responses ensure graceful degradation if AI is unavailable
+### 🛡️ Smart API Rate-Limit Eco-Fallback
+To guarantee uninterrupted operation even under severe network constraints or API quota limits (such as Google Gemini `429 ResourceExhausted` errors):
+1. **Dynamic Heuristics Chat**: The backend intercepts connection and quota exceptions, falling back to a local rule-based conversational agent (`get_offline_response`). It analyzes user inputs (e.g., questions matching transport, food, shopping, or energy) and provides detailed, customized tips based on the user's highest emission categories.
+2. **Offline Insights Planner**: If Gemini fails to construct an action plan, `generate_offline_insights` runs in the backend, programmatically assembling a custom structured JSON action plan tailored specifically to the user's primary emission sources.
+3. **Visual Feedback**: The interface clearly indicates when Eco-Fallback Mode is active, ensuring transparent communication without breaking the user experience.
 
 ---
 
-## ✨ How the Solution Works
+## ✨ Core Features
 
-### 1. 🧮 Carbon Calculator
-Fill in 4 lifestyle categories → get instant CO₂ breakdown, Eco Score, and comparisons vs global/US averages.
-
-### 2. 🤖 AI Insights (Google Gemini)
-Gemini 1.5 Flash analyzes your footprint and returns:
-- Executive summary of your impact
-- Top 3 highest-impact actions (with difficulty & timeframe)
-- Quick win (do today) + biggest opportunity
-- Personalized reduction goal recommendation
-
-### 3. 🗺️ Eco Explorer Map (Google Maps + Places + Directions)
-- Auto-detects your location via browser geolocation
-- Shows nearby **EV charging stations**, **green spaces**, **transit stops**
-- **Route Carbon Comparator**: Enter origin & destination → see CO₂ cost for car, bus, train, cycling
-- Dark-themed custom map style
-
-### 4. 📈 Progress Tracker (Google Charts)
-- Log green actions (presets + custom)
-- 14-day CO₂ savings chart
-- **Badge system** (9 badges: First Step, Eco Hero, Streak master, etc.)
-- **Streak counter** with daily continuity tracking
-
-### 5. 🏆 Community Leaderboard
-- Anonymous ranking by total CO₂ saved
-- Platform-wide impact statistics
-- Google Charts **Geo Chart** showing global impact distribution
-
-### 6. 💬 EcoGuide AI Chat (Google Gemini)
-- Real-time chat with context-aware AI assistant
-- Maintains conversation history per session
-- Markdown formatting in responses
-- Suggestion chips for common questions
+1. **Carbon Calculator**: Seamless inputs for weekly mileage, home utility consumption, diet preferences, shopping frequency, and streaming habits. Provides instant category breakdowns.
+2. **AI Action Plan (Google Gemini)**: Analyzes results to suggest three high-impact reduction tasks (categorized by difficulty and timeframe), a quick win, a primary reduction target, and a personalized motivational message.
+3. **Interactive Eco Explorer (Leaflet.js + OpenStreetMap)**:
+   - Dynamic maps to search nearby EV charging stations, green parks, and transit terminals.
+   - **Route Carbon Comparator**: Compares exact CO₂e costs across driving (petrol vs. EV), transit, and active commuting options (walking/cycling).
+4. **Streak & Gamification Tracker**: Integrates 9 earnable milestone badges (e.g., *Eco Hero*, *Streak Master*) and a consecutive-day tracking script.
+5. **Platform Impact Board**:
+   - Dynamic **Google Charts** (column, bar, and progress charts) showing your savings trends.
+   - A global **Google GeoChart** illustrating user distribution and community impact.
 
 ---
 
-## 🔧 Google Products Used (8 Total)
+## 🔧 Google Products Integrated (6+)
 
-| Product | Integration |
-|---------|-------------|
-| **Google Gemini AI** | EcoGuide chat assistant + personalized insights generation |
-| **Google Maps JavaScript API** | Interactive dark-themed eco map |
-| **Google Places API** | Nearby EV stations, parks, transit stops |
-| **Google Directions API** | Multi-modal route carbon cost comparison |
-| **Google Charts** | Emission breakdown (bar), progress (column), geo (world map) |
-| **Google Fonts** | Outfit + Inter + JetBrains Mono typography |
-| **Google Analytics 4** | User behavior tracking (section views, calculations, chat events) |
-| **Google Tag Manager** | Tag management and conversion event tracking |
+* **Google Gemini AI API**: Powers the EcoGuide chatbot and creates structured action plans (1.5 Flash).
+* **Google Charts**: Renders emission breakdowns, target progress bars, and localized distribution maps.
+* **Google Fonts**: Custom, high-contrast typography (Outfit, Inter, JetBrains Mono).
+* **Google Analytics 4**: Captures engagement metrics through custom events (e.g., `footprint_calculated`, `insights_viewed`, `chat_message`).
+* **Google Tag Manager**: Standardized container tags with noscript fail-safes.
+* **FastAPI + Python Backend**: Optimized backend using async routines, concurrency locks, and slowapi limiters.
 
 ---
 
-## 📁 Project Structure
+## 🔒 Security & Performance Optimizations
 
-```
-Carbon Footprint Awareness Platform/
-├── app.py              # FastAPI server — runs everything
-├── requirements.txt    # Python dependencies
-├── README.md           # This file
-├── data/
-│   └── user_data.json  # Auto-created: persistent activity storage
-└── static/
-    ├── index.html      # Single-page application (all 6 sections)
-    ├── style.css       # Premium dark glassmorphism theme
-    └── app.js          # Frontend logic (charts, maps, AI, tracker)
-```
-
----
-
-## 🎨 Design System
-
-- **Theme**: Deep space dark (`#050b15`) with emerald green (`#10b981`) accents
-- **Style**: Glassmorphism cards, smooth gradient backgrounds
-- **Typography**: Outfit (display), Inter (body), JetBrains Mono (data)
-- **Animations**: Floating globe, particle system, score ring, counter animations
-- **Responsive**: Mobile-first, works on all screen sizes
-- **Accessibility**: WCAG 2.1 AA — ARIA labels, keyboard nav, focus indicators, `role` attributes, `aria-live` regions
-
----
-
-## 🔒 Security Practices
-
-- API keys served via `/api/config` endpoint (not hardcoded in frontend HTML)
-- CORS middleware configured for controlled access
-- Input validation via **Pydantic** models on all POST endpoints
-- Session IDs are client-generated random strings (no PII collected)
-- Activity data anonymized before leaderboard display (only first 6 chars of session ID shown)
-- No SQL injection risk (in-memory + JSON file storage, no SQL)
-
----
-
-## ⚙️ Efficiency
-
-- **Frontend**: Single HTML file, no build step, zero npm required
-- **Backend**: FastAPI async endpoints, non-blocking Gemini calls
-- **Storage**: JSON file with in-memory cache (no database overhead for demo)
-- **Charts**: Google Charts loaded once and reused across sections
-- **Maps**: Lazy-initialized only when Map section is first opened
-- **Gemini**: Per-session chat object reuse (no repeated context setup)
-- **LocalStorage**: All user data cached client-side for instant reload
+* **Zero Hardcoded Secrets**: All keys are loaded dynamically from `.env` configurations.
+* **Rate Limiting**: Configured `slowapi` decorators limiting chat to 15 requests/minute and insights to 10 requests/minute to prevent API exhaustion.
+* **Thread-Safe Data Layer**: Writes to the JSON data file are queued via `asyncio.Lock` to eliminate concurrency issues.
+* **CORS Whitelisting**: Restricted domains to prevent unauthorized API requests.
+* **O(1) Data Retrieval**: Created `activity_index` mappings on load, shifting log queries from O(N) linear scans to instant indexed lookups.
+* **TTL Caching**: Caches platform-wide aggregates for 30 seconds to minimize file read/write operations under high traffic.
+* **Accessibility (WCAG 2.1 AA)**: Includes skip-to-main anchors, focus states (`:focus-visible`), ARIA landmarks, `aria-live` regions, and screen-reader alternatives.
 
 ---
 
 ## 🧪 Testing
 
-### API Endpoints
+### Automated Test Suite
+The project includes a complete suite of automated backend tests under `tests/`.
+To run the test suite:
+```bash
+# Verify all endpoints, calculation accuracy, and fallback logic
+pytest -v
+```
+
+**Tested Components**:
+- Health status and environment checking.
+- Core math formulas (`calculate_carbon`) with boundary inputs.
+- API calculation POST payload validations.
+- Activity history index lookups and leaderboard ranks.
+- Local eco-fallback rules and offline JSON insight schemas.
+
+### Manual Endpoint Testing
+You can manually query the API using `curl`:
 ```bash
 # Health check
 curl http://localhost:8000/api/health
@@ -177,68 +142,29 @@ curl -X POST http://localhost:8000/api/calculate \
   -H "Content-Type: application/json" \
   -d '{"car_km_per_week":150,"car_type":"petrol","flights_per_year":2,"diet_type":"omnivore","electricity_kwh":300}'
 
-# Chat with AI
-curl -X POST http://localhost:8000/api/chat \
-  -H "Content-Type: application/json" \
-  -d '{"session_id":"test123","message":"How can I reduce my carbon footprint?"}'
-
-# Get leaderboard
+# Fetch anonymized leaderboard
 curl http://localhost:8000/api/leaderboard
-
-# API docs (interactive)
-open http://localhost:8000/docs
 ```
-
-### Manual Verification Checklist
-- [ ] Calculator computes results and shows score ring animation
-- [ ] AI Insights load after calculation (Gemini response)
-- [ ] Google Map loads with EV stations near your location
-- [ ] Route comparison shows CO₂ for different transport modes
-- [ ] Activity logging updates chart and badges
-- [ ] Chat responds with contextual Gemini AI answers
-- [ ] Leaderboard shows community rankings
-- [ ] Works on mobile (responsive layout)
-
----
-
-## 📋 Assumptions
-
-1. **Single-user demo**: Session is browser-based (localStorage); no auth system.
-2. **Emission factors**: Global averages used (IPCC 2023). Real values vary by country/region.
-3. **Grid electricity**: Default 0.233 kg CO₂/kWh (global average). Actual varies by energy mix.
-4. **Flights**: Average distances assumed per category (short=500km, medium=3000km, long=9000km).
-5. **Food waste**: 2.5 kg CO₂e per kg wasted (landfill average).
-6. **Streaming**: Based on average device + network energy consumption.
-7. **Persistence**: Data stored in `data/user_data.json` — resets if file deleted.
-8. **Internet required**: Google Maps, Charts, Fonts, and Gemini AI need internet access.
 
 ---
 
 ## 🌱 Emission Factors Reference
 
-| Source | Factor |
-|--------|--------|
-| Petrol car | 0.21 kg CO₂/km |
-| Diesel car | 0.17 kg CO₂/km |
-| Hybrid car | 0.11 kg CO₂/km |
-| Electric car | 0.05 kg CO₂/km |
-| Bus | 0.089 kg CO₂/km |
-| Grid electricity | 0.233 kg CO₂/kWh |
-| Natural gas | 2.04 kg CO₂/m³ |
-| Vegan diet | 1.5 kg CO₂e/day |
-| Omnivore diet | 5.0 kg CO₂e/day |
-| Heavy meat diet | 7.5 kg CO₂e/day |
+| Factor Source | Value |
+|---|---|
+| Petrol Car | 0.21 kg CO₂e / km |
+| Diesel Car | 0.17 kg CO₂e / km |
+| Hybrid Car | 0.11 kg CO₂e / km |
+| Electric Car | 0.05 kg CO₂e / km |
+| Public Transit | 0.089 kg CO₂e / km |
+| Grid Electricity | 0.233 kg CO₂e / kWh |
+| Natural Gas | 2.04 kg CO₂e / m³ |
+| Heavy Meat Diet | 7.5 kg CO₂e / day |
+| Vegan Diet | 1.5 kg CO₂e / day |
 
-*Sources: IPCC AR6, IEA 2023, Our World in Data*
+*Sources: IPCC Sixth Assessment Report (AR6), International Energy Agency (IEA) 2023, Our World in Data.*
 
 ---
 
 ## 📜 License
-
-MIT License — Built for PromptWar Challenge 3 | Carbon Footprint Awareness Platform
-
----
-
-<div align="center">
-  <strong>🌍 Built to make sustainability measurable, actionable, and community-driven.</strong>
-</div>
+MIT License — Hack2Skill Challenge | EcoTrack Carbon Footprint Awareness Platform

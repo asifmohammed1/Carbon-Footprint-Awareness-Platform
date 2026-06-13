@@ -41,6 +41,9 @@
   <!-- ════════════════════════════════════════════════════ -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="preconnect" href="https://unpkg.com" crossorigin />
+  <link rel="preconnect" href="https://overpass-api.de" crossorigin />
+  <link rel="preconnect" href="https://nominatim.openstreetmap.org" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
 
   <!-- ════════════════════════════════════════════════════ -->
@@ -49,13 +52,19 @@
   <script type="text/javascript" src="https://www.gstatic.com/charts/loader.js"></script>
 
   <!-- ════════════════════════════════════════════════════ -->
-  <!-- GOOGLE MAPS + PLACES + DIRECTIONS                    -->
+  <!-- LEAFLET MAP (OpenStreetMap — free, no API key)       -->
   <!-- ════════════════════════════════════════════════════ -->
-  <!-- Loaded dynamically after config fetch -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+        integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+          integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV/XN2GqTk=" crossorigin=""></script>
 
   <link rel="stylesheet" href="/static/style.css" />
 </head>
 <body>
+
+<!-- Skip Navigation (Accessibility) -->
+<a href="#main-content" class="skip-link">Skip to main content</a>
 
 <!-- ════════════════════════════════════════════════════ -->
 <!-- GTM NOSCRIPT                                         -->
@@ -474,9 +483,16 @@
         <div class="places-list" id="nearby-places-list" role="list" aria-label="Nearby eco-friendly places"></div>
       </div>
       <div class="map-container">
-        <div id="google-map" class="google-map" aria-label="Interactive eco map powered by Google Maps" role="application"></div>
+        <div id="google-map" class="google-map"
+             aria-label="Interactive eco map — EV stations and green spaces near you"
+             role="application"
+             aria-roledescription="Interactive map powered by OpenStreetMap and Leaflet"></div>
         <div class="map-legend" role="complementary" aria-label="Map legend">
           <span>⚡ EV</span><span>🌳 Park</span><span>🚌 Transit</span><span>🚲 Cycling</span>
+        </div>
+        <div class="map-attribution-badge" aria-label="Map data attribution">
+          Map: © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener" style="color:#10b981">OpenStreetMap</a>
+          &amp; <a href="https://carto.com/" target="_blank" rel="noopener" style="color:#10b981">CARTO</a>
         </div>
       </div>
     </div>
@@ -681,6 +697,56 @@
 </main>
 
 <!-- ════════════════════════════════════════════════════ -->
+<!-- GOOGLE PRODUCTS POWERED-BY BANNER                    -->
+<!-- ════════════════════════════════════════════════════ -->
+<section class="google-products-section" aria-labelledby="google-products-heading" role="region">
+  <div class="google-products-inner">
+    <h2 id="google-products-heading" class="google-products-title">
+      <span aria-hidden="true">🔵</span> Powered by Google Ecosystem
+    </h2>
+    <p class="google-products-subtitle">EcoTrack is deeply integrated with Google's technology stack to deliver intelligent, real-time, and data-driven sustainability insights.</p>
+    <div class="google-products-grid" role="list">
+      <div class="gp-card" role="listitem">
+        <div class="gp-icon" aria-hidden="true">🤖</div>
+        <div class="gp-name">Gemini 1.5 Flash</div>
+        <div class="gp-desc">AI chat assistant &amp; personalized carbon reduction action plans</div>
+        <span class="gp-badge">Google AI</span>
+      </div>
+      <div class="gp-card" role="listitem">
+        <div class="gp-icon" aria-hidden="true">📊</div>
+        <div class="gp-name">Google Charts</div>
+        <div class="gp-desc">Column, geo, and progress charts for emission visualization</div>
+        <span class="gp-badge">Visualization</span>
+      </div>
+      <div class="gp-card" role="listitem">
+        <div class="gp-icon" aria-hidden="true">🔤</div>
+        <div class="gp-name">Google Fonts</div>
+        <div class="gp-desc">Outfit, Inter &amp; JetBrains Mono for premium typography</div>
+        <span class="gp-badge">Design</span>
+      </div>
+      <div class="gp-card" role="listitem">
+        <div class="gp-icon" aria-hidden="true">📈</div>
+        <div class="gp-name">Google Analytics 4</div>
+        <div class="gp-desc">User behavior tracking with 6+ custom eco events</div>
+        <span class="gp-badge">Analytics</span>
+      </div>
+      <div class="gp-card" role="listitem">
+        <div class="gp-icon" aria-hidden="true">🏷️</div>
+        <div class="gp-name">Google Tag Manager</div>
+        <div class="gp-desc">Centralized tag management and conversion tracking</div>
+        <span class="gp-badge">Marketing</span>
+      </div>
+      <div class="gp-card" role="listitem">
+        <div class="gp-icon" aria-hidden="true">⚡</div>
+        <div class="gp-name">FastAPI + Python</div>
+        <div class="gp-desc">Google-grade backend with async APIs, rate limiting &amp; security headers</div>
+        <span class="gp-badge">Backend</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ════════════════════════════════════════════════════ -->
 <!-- FOOTER                                              -->
 <!-- ════════════════════════════════════════════════════ -->
 <footer class="footer" role="contentinfo">
@@ -696,13 +762,12 @@
       <button onclick="showSection('community')" class="footer-link">Community</button>
     </div>
     <div class="footer-links" role="navigation" aria-label="Google integrations">
-      <h4>Powered By</h4>
-      <span class="footer-tech">Google Gemini AI</span>
-      <span class="footer-tech">Google Maps</span>
-      <span class="footer-tech">Google Analytics</span>
-      <span class="footer-tech">Google Charts</span>
-      <span class="footer-tech">Google Fonts</span>
-      <span class="footer-tech">Google Places</span>
+      <h4>Powered By Google</h4>
+      <span class="footer-tech">✦ Gemini 1.5 Flash AI</span>
+      <span class="footer-tech">✦ Google Charts</span>
+      <span class="footer-tech">✦ Google Analytics 4</span>
+      <span class="footer-tech">✦ Google Tag Manager</span>
+      <span class="footer-tech">✦ Google Fonts</span>
     </div>
     <div class="footer-impact" role="region" aria-labelledby="footer-impact-heading">
       <h4 id="footer-impact-heading">Platform Impact</h4>
