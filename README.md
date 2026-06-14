@@ -2,6 +2,8 @@
 
 > **Hack2Skill AI Challenge** | An AI-powered platform designed to help individuals understand, track, and reduce their carbon footprint. Powered by Google Gemini AI, Google Charts, dynamic local fallback engines, and optimized microservices.
 
+⚡ **Live Demo (Google Cloud Run)**: [https://ecotrack-app-391319301858.us-central1.run.app](https://ecotrack-app-391319301858.us-central1.run.app)
+
 ---
 
 ## 🚀 Quick Start
