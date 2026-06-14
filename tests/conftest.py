@@ -2,8 +2,6 @@
 Shared pytest fixtures for EcoTrack test suite.
 """
 import pytest
-import json
-from pathlib import Path
 from fastapi.testclient import TestClient
 
 

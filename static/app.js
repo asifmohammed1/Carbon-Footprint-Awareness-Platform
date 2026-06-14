@@ -25,7 +25,7 @@ const STATE = {
   currentSection:  'calculator',
 };
 
-const API = 'http://localhost:8000/api';
+const API = '/api';
 
 // ─── Initialization ───────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {

@@ -5,8 +5,6 @@ Covers all API endpoints, business logic, edge cases, and error paths.
 
 import json
 import pytest
-from pathlib import Path
-from unittest.mock import patch, MagicMock
 
 from app import (
     calculate_carbon,

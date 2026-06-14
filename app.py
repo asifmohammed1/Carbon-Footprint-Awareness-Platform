@@ -42,10 +42,14 @@ GEMINI_API_KEY  = os.environ.get("GEMINI_API_KEY", "")
 MAPS_API_KEY    = os.environ.get("MAPS_API_KEY", "")
 PORT            = int(os.environ.get("PORT", "8000"))
 DATA_FILE       = Path(os.environ.get("DATA_FILE", "data/user_data.json"))
-ALLOWED_ORIGINS = os.environ.get(
-    "ALLOWED_ORIGINS",
-    "http://localhost:8000,http://127.0.0.1:8000"
-).split(",")
+ALLOWED_ORIGINS = [
+    origin.strip()
+    for origin in os.environ.get(
+        "ALLOWED_ORIGINS",
+        "http://localhost:8000,http://127.0.0.1:8000"
+    ).split(",")
+    if origin.strip()
+]
 
 # Tuneable constants
 MAX_MESSAGE_LENGTH: int   = 1000     # prevent Gemini cost abuse
@@ -97,7 +101,7 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
-    allow_credentials=True,
+    allow_credentials=False if "*" in ALLOWED_ORIGINS else True,
     allow_methods=["GET", "POST"],
     allow_headers=["Content-Type", "Authorization"],
 )
@@ -111,6 +115,16 @@ async def add_security_headers(request: Request, call_next):
     response.headers["X-Frame-Options"]         = "DENY"
     response.headers["X-XSS-Protection"]        = "1; mode=block"
     response.headers["Referrer-Policy"]          = "strict-origin-when-cross-origin"
+    response.headers["Content-Security-Policy"] = (
+        "default-src 'self'; "
+        "script-src 'self' 'unsafe-inline' 'unsafe-eval' "
+        "https://www.googletagmanager.com https://www.google.com https://www.gstatic.com https://unpkg.com; "
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://unpkg.com; "
+        "img-src 'self' data: https://*.tile.openstreetmap.org https://*.basemaps.cartocdn.com https://www.googletagmanager.com; "
+        "font-src 'self' data: https://fonts.gstatic.com; "
+        "connect-src 'self' https://overpass-api.de https://nominatim.openstreetmap.org; "
+        "frame-src 'self' https://www.googletagmanager.com;"
+    )
     return response
 
 
@@ -860,7 +874,9 @@ async def get_platform_stats():
 @app.get("/api/config", include_in_schema=False)
 async def get_config():
     """Expose runtime configuration required by the frontend."""
-    return {"maps_api_key": MAPS_API_KEY, "version": "1.0.0"}
+    # Mask API key to prevent public configuration leakage (Leaflet.js is used on client side)
+    masked_key = f"{MAPS_API_KEY[:4]}...{MAPS_API_KEY[-4:]}" if len(MAPS_API_KEY) > 8 else "configured" if MAPS_API_KEY else ""
+    return {"maps_api_key": masked_key, "version": "1.0.0"}
 
 
 @app.get("/api/health", summary="Liveness / readiness check")
