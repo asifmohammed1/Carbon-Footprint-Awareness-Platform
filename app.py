@@ -160,14 +160,14 @@ _stats_cache_at: float    = 0.0
 
 
 def get_cached_stats() -> Optional[Dict]:
-    age = datetime.datetime.utcnow().timestamp() - _stats_cache_at
+    age = datetime.datetime.now(datetime.timezone.utc).timestamp() - _stats_cache_at
     return _stats_cache.copy() if (_stats_cache and age < STATS_CACHE_TTL_SEC) else None
 
 
 def set_stats_cache(stats: Dict) -> None:
     global _stats_cache, _stats_cache_at
     _stats_cache    = stats.copy()
-    _stats_cache_at = datetime.datetime.utcnow().timestamp()
+    _stats_cache_at = datetime.datetime.now(datetime.timezone.utc).timestamp()
 
 
 def invalidate_stats_cache() -> None:
@@ -325,7 +325,7 @@ def calculate_carbon(data: CarbonInput) -> Dict:
         "eco_score":       eco_score,
         "trees_to_offset": round(total / TREE_ABSORPTION_KG, 0),
         "session_id":      data.session_id,
-        "timestamp":       datetime.datetime.utcnow().isoformat(),
+        "timestamp":       datetime.datetime.now(datetime.timezone.utc).isoformat(),
     }
 
 # ─── Gemini AI ────────────────────────────────────────────────────────────────
@@ -656,7 +656,7 @@ async def get_gemini_response(session_id: str, message: str, context: Optional[D
             enriched = message
 
         full_prompt = f"{_SYSTEM_PROMPT}\n\n{enriched}"
-        loop     = asyncio.get_event_loop()
+        loop     = asyncio.get_running_loop()
         response = await loop.run_in_executor(None, lambda: chat.send_message(full_prompt))
         logger.info("Gemini chat: session=%s...", session_id[:8])
         return response.text
@@ -693,7 +693,7 @@ async def get_ai_insights(carbon_data: Dict) -> Dict:
             '"biggest_win":"<string>","quick_win":"<string>","yearly_goal_kg":<int>,'
             '"motivational_message":"<string>"}'
         )
-        loop     = asyncio.get_event_loop()
+        loop     = asyncio.get_running_loop()
         response = await loop.run_in_executor(None, lambda: _gemini_model.generate_content(prompt))
         text     = response.text.strip()
 
@@ -751,7 +751,7 @@ async def chat_with_ai(request: Request, msg: ChatMessage):
     """
     reply = await get_gemini_response(msg.session_id, msg.message, msg.carbon_context)
     return {"response": reply, "session_id": msg.session_id,
-            "timestamp": datetime.datetime.utcnow().isoformat()}
+            "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat()}
 
 
 @app.post("/api/insights", summary="Generate AI-powered personalized insights")
@@ -768,7 +768,7 @@ async def get_insights(request: Request, data: dict):
 async def log_activity(activity: ActivityLog):
     """Record an eco-friendly action and update the community leaderboard."""
     if not activity.date:
-        activity.date = datetime.datetime.utcnow().isoformat()
+        activity.date = datetime.datetime.now(datetime.timezone.utc).isoformat()
 
     entry_idx = len(DB["activities"])
     DB["activities"].append(activity.model_dump())
@@ -799,7 +799,7 @@ async def set_goal(goal: GoalInput):
     DB["users"].setdefault(goal.session_id, {})["goal"] = {
         "target_reduction_pct": goal.target_reduction_pct,
         "timeline_months":      goal.timeline_months,
-        "created_at":           datetime.datetime.utcnow().isoformat(),
+        "created_at":           datetime.datetime.now(datetime.timezone.utc).isoformat(),
     }
     asyncio.create_task(save_data_async(DB))
     logger.info("Goal set: session=%s... %.0f%% over %d months",
@@ -868,7 +868,7 @@ async def health_check():
     """Return server health and integration status."""
     return {
         "status":            "ok",
-        "timestamp":         datetime.datetime.utcnow().isoformat(),
+        "timestamp":         datetime.datetime.now(datetime.timezone.utc).isoformat(),
         "gemini_configured": _gemini_model is not None,
         "maps_configured":   bool(MAPS_API_KEY),
     }
