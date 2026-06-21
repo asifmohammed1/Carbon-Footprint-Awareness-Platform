@@ -1,20 +1,115 @@
-/* ═══════════════════════════════════════════════════════════════════
-   EcoTrack — Carbon Footprint Awareness Platform
-   Main Application JavaScript
-   Map: Leaflet.js + OpenStreetMap (free, no API key)
-   Charts: Google Charts
-   AI: Gemini via backend
-   ═══════════════════════════════════════════════════════════════════ */
+/**
+ * @fileoverview EcoTrack — Carbon Footprint Awareness Platform (Main Client JS)
+ *
+ * Single-page application controller that manages:
+ * - Carbon footprint calculation via the backend API
+ * - AI-powered insights and chat (Gemini via backend proxy)
+ * - Interactive Leaflet map for EV stations and green spaces
+ * - Progress tracking with activity logging, streaks, and badges
+ * - Community leaderboard and platform-wide statistics
+ * - Google Charts integration for data visualisation
+ *
+ * External dependencies:
+ *   - Leaflet.js + CartoDB tiles (map)
+ *   - Google Charts (column, geo, bar charts)
+ *   - Google Analytics 4 + GTM (event tracking)
+ *
+ * @author  EcoTrack Team
+ * @version 1.0.0
+ */
 
 'use strict';
 
+// ─── Named Constants ──────────────────────────────────────────────────────────
+// Extracted from inline usage to eliminate magic numbers and improve readability.
+
+/** @const {number} SVG circumference of the eco-score ring (2πr, r=50) */
+const SCORE_RING_CIRCUMFERENCE = 314;
+
+/** @const {number} Milliseconds in one day — used for streak resets */
+const MS_PER_DAY = 86_400_000;
+
+/** @const {number} kg CO₂ absorbed per tree per year (IPCC average) */
+const TREE_ABSORPTION_KG = 21;
+
+/** @const {number} Max activity log entries persisted in localStorage */
+const MAX_LOCAL_LOG_ENTRIES = 100;
+
+/** @const {number} Max visible entries in the activity log UI */
+const MAX_VISIBLE_LOG_ENTRIES = 20;
+
+/** @const {number} Loader fade-out delay in ms after DOMContentLoaded */
+const LOADER_HIDE_DELAY_MS = 1200;
+
+/** @const {number} Hero counter animation start delay in ms */
+const HERO_COUNTER_DELAY_MS = 1500;
+
+/** @const {number} Number of ambient particles spawned in the hero section */
+const PARTICLE_COUNT = 20;
+
+/** @const {number} Earth radius in km — used by the Haversine formula */
+const EARTH_RADIUS_KM = 6371;
+
+/** @const {number} Duration of number-animation easing in ms */
+const NUMBER_ANIMATION_DURATION_MS = 1500;
+
+/** @const {number} Max height in px for the auto-resizing chat textarea */
+const CHAT_TEXTAREA_MAX_HEIGHT = 120;
+
+/** @const {number} Debounce delay in ms before reloading platform stats */
+const STATS_DEBOUNCE_MS = 5000;
+
+/** @const {number} Delay before animated bar widths render (ms) */
+const BAR_ANIMATION_DELAY_MS = 200;
+
+/** @const {number} Small delay for Leaflet map init to ensure div is visible */
+const MAP_INIT_DELAY_MS = 100;
+
+/** @const {number} Chart startup animation duration in ms */
+const CHART_ANIMATION_DURATION_MS = 1000;
+
+/** @const {string} Colour used for eco-scores above 70 (green) */
+const COLOR_SCORE_HIGH = '#10b981';
+
+/** @const {string} Colour used for eco-scores between 41–70 (amber) */
+const COLOR_SCORE_MID = '#f59e0b';
+
+/** @const {string} Colour used for eco-scores 0–40 (red) */
+const COLOR_SCORE_LOW = '#ef4444';
+
+/** @const {number} Progress chart look-back window in days */
+const PROGRESS_CHART_DAYS = 14;
+
+/** @const {number} Max leaderboard entries shown in the UI */
+const LEADERBOARD_MAX_ENTRIES = 20;
+
 // ─── App State ────────────────────────────────────────────────────────────────
+
+/**
+ * Global application state object.
+ *
+ * @type {{
+ *   sessionId:       string|null,
+ *   carbonData:      Object|null,
+ *   insightsData:    Object|null,
+ *   map:             Object|null,
+ *   mapMarkers:      Array,
+ *   activeMapLayers: {ev: boolean, parks: boolean, transit: boolean, bike: boolean},
+ *   tileLayer:       Object|null,
+ *   activityLog:     Array,
+ *   streak:          number,
+ *   lastActivityDate: string|null,
+ *   totalSaved:      number,
+ *   chartsLoaded:    boolean,
+ *   currentSection:  string,
+ * }}
+ */
 const STATE = {
   sessionId:       null,
   carbonData:      null,
   insightsData:    null,
-  map:             null,         // Leaflet map instance
-  mapMarkers:      [],           // Leaflet markers/layers
+  map:             null,
+  mapMarkers:      [],
   activeMapLayers: { ev: true, parks: false, transit: false, bike: false },
   tileLayer:       null,
   activityLog:     [],
@@ -25,9 +120,16 @@ const STATE = {
   currentSection:  'calculator',
 };
 
+/** @const {string} Base path for all API calls */
 const API = '/api';
 
 // ─── Initialization ───────────────────────────────────────────────────────────
+
+/**
+ * Bootstrap the application after the DOM is ready.
+ * Initialises session, loads persisted state, spawns particles, fetches
+ * platform stats, and wires up the UI.
+ */
 document.addEventListener('DOMContentLoaded', async () => {
   initSession();
   loadLocalStorage();
@@ -41,13 +143,18 @@ document.addEventListener('DOMContentLoaded', async () => {
   updateNavScore();
   updateChatContext();
 
-  setTimeout(() => document.getElementById('loader').classList.add('hidden'), 1200);
-  setTimeout(animateHeroCounters, 1500);
+  setTimeout(() => document.getElementById('loader').classList.add('hidden'), LOADER_HIDE_DELAY_MS);
+  setTimeout(animateHeroCounters, HERO_COUNTER_DELAY_MS);
 
   trackEvent('page_view', { page: 'home' });
 });
 
 // ─── Session Management ───────────────────────────────────────────────────────
+
+/**
+ * Initialise or restore the user's session ID from localStorage.
+ * Generates a unique ID on first visit.
+ */
 function initSession() {
   let sid = localStorage.getItem('eco_session_id');
   if (!sid) {
@@ -57,6 +164,11 @@ function initSession() {
   STATE.sessionId = sid;
 }
 
+/**
+ * Load persisted state (carbon data, activity log, streak, total saved)
+ * from localStorage.  Resets the streak if the user was inactive for more
+ * than one day.
+ */
 function loadLocalStorage() {
   const saved = localStorage.getItem('eco_carbon_data');
   if (saved) STATE.carbonData = JSON.parse(saved);
@@ -73,10 +185,10 @@ function loadLocalStorage() {
   const savedTotal = localStorage.getItem('eco_total_saved');
   if (savedTotal) STATE.totalSaved = parseFloat(savedTotal);
 
-  // Reset streak if not active yesterday/today
+  // Reset streak if not active yesterday or today
   if (STATE.lastActivityDate) {
     const today     = new Date().toDateString();
-    const yesterday = new Date(Date.now() - 86400000).toDateString();
+    const yesterday = new Date(Date.now() - MS_PER_DAY).toDateString();
     const last      = new Date(STATE.lastActivityDate).toDateString();
     if (last !== today && last !== yesterday) {
       STATE.streak = 0;
@@ -86,6 +198,10 @@ function loadLocalStorage() {
 }
 
 // ─── Google Charts ────────────────────────────────────────────────────────────
+
+/**
+ * Load the Google Charts library and render initial charts once ready.
+ */
 function initGoogleCharts() {
   google.charts.load('current', { packages: ['corechart', 'geochart', 'bar'] });
   google.charts.setOnLoadCallback(() => {
@@ -97,6 +213,12 @@ function initGoogleCharts() {
 }
 
 // ─── Navigation ───────────────────────────────────────────────────────────────
+
+/**
+ * Switch the visible SPA section and update navigation state.
+ *
+ * @param {string} name - Section identifier (e.g. 'calculator', 'map', 'chat').
+ */
 function showSection(name) {
   document.querySelectorAll('.app-section').forEach(s => s.classList.remove('active'));
   document.querySelectorAll('.nav-link').forEach(l => { l.classList.remove('active'); l.removeAttribute('aria-current'); });
@@ -111,7 +233,7 @@ function showSection(name) {
 
   // Lazy-init Leaflet map when Map section is first opened
   if (name === 'map' && !STATE.map) {
-    setTimeout(initMap, 100); // small delay ensures div is visible
+    setTimeout(initMap, MAP_INIT_DELAY_MS);
   }
   if (name === 'community') loadLeaderboard();
   if (name === 'tracker')   renderProgressChart();
@@ -122,6 +244,9 @@ function showSection(name) {
   trackEvent('section_view', { section: name });
 }
 
+/**
+ * Toggle the mobile hamburger menu open/closed.
+ */
 function toggleMobileMenu() {
   const links = document.querySelector('.nav-links');
   const btn   = document.getElementById('hamburger-btn');
@@ -130,9 +255,14 @@ function toggleMobileMenu() {
 }
 
 // ─── Particle System ─────────────────────────────────────────────────────────
+
+/**
+ * Spawn ambient floating particles in the hero section for visual effect.
+ * Each particle gets a randomised size, position, and animation duration.
+ */
 function spawnParticles() {
   const container = document.getElementById('hero-particles');
-  for (let i = 0; i < 20; i++) {
+  for (let i = 0; i < PARTICLE_COUNT; i++) {
     const p    = document.createElement('div');
     p.className = 'particle';
     const size  = Math.random() * 6 + 2;
@@ -147,6 +277,13 @@ function spawnParticles() {
 }
 
 // ─── Carbon Calculator ────────────────────────────────────────────────────────
+
+/**
+ * Collect form inputs, send them to the backend ``/api/calculate``
+ * endpoint, and render the results.
+ *
+ * @returns {Promise<void>}
+ */
 async function calculateFootprint() {
   const btn     = document.getElementById('calculate-btn');
   const txt     = document.getElementById('calc-btn-text');
@@ -197,17 +334,23 @@ async function calculateFootprint() {
   }
 }
 
+/**
+ * Render the carbon calculation results panel including score ring,
+ * totals, comparison chips, breakdown chart, and category bars.
+ *
+ * @param {Object} data - The carbon result object from the API.
+ */
 function renderResults(data) {
   document.getElementById('results-placeholder').classList.add('hidden');
   document.getElementById('results-content').classList.remove('hidden');
 
-  // Score ring
+  // Score ring animation
   const score = data.eco_score;
   const ring  = document.getElementById('score-ring-fill');
-  const offset = 314 - (score / 100) * 314;
-  setTimeout(() => { ring.style.strokeDashoffset = offset; }, 100);
+  const offset = SCORE_RING_CIRCUMFERENCE - (score / 100) * SCORE_RING_CIRCUMFERENCE;
+  setTimeout(() => { ring.style.strokeDashoffset = offset; }, MAP_INIT_DELAY_MS);
 
-  const color = score > 70 ? '#10b981' : score > 40 ? '#f59e0b' : '#ef4444';
+  const color = score > 70 ? COLOR_SCORE_HIGH : score > 40 ? COLOR_SCORE_MID : COLOR_SCORE_LOW;
   ring.style.stroke = color;
   document.getElementById('result-score').textContent = score;
   document.getElementById('result-score').style.color = color;
@@ -226,6 +369,11 @@ function renderResults(data) {
   document.getElementById('insights-prompt').classList.add('hidden');
 }
 
+/**
+ * Draw the emission breakdown column chart using Google Charts.
+ *
+ * @param {Object} data - The carbon result object containing ``breakdown``.
+ */
 function renderBreakdownChart(data) {
   const b = data.breakdown;
   const chartData = google.visualization.arrayToDataTable([
@@ -243,11 +391,16 @@ function renderBreakdownChart(data) {
     legend: { position: 'none' },
     bar: { groupWidth: '55%' },
     annotations: { textStyle: { color: '#f0fdf4', fontSize: 11, bold: true } },
-    animation: { startup: true, duration: 1000, easing: 'out' },
+    animation: { startup: true, duration: CHART_ANIMATION_DURATION_MS, easing: 'out' },
   };
   new google.visualization.ColumnChart(document.getElementById('breakdown-chart')).draw(chartData, options);
 }
 
+/**
+ * Render animated horizontal category progress bars beneath the chart.
+ *
+ * @param {Object} breakdown - The ``breakdown`` sub-object from the carbon result.
+ */
 function renderCategoryBars(breakdown) {
   const container = document.getElementById('category-bars');
   const total = Object.values(breakdown).reduce((s, c) => s + (c.total || 0), 0);
@@ -273,10 +426,16 @@ function renderCategoryBars(breakdown) {
   }).join('');
   setTimeout(() => {
     document.querySelectorAll('.cat-bar-fill').forEach(b => { b.style.width = b.dataset.width; });
-  }, 200);
+  }, BAR_ANIMATION_DELAY_MS);
 }
 
 // ─── Form Helpers ─────────────────────────────────────────────────────────────
+
+/**
+ * Toggle a calculator category section open/closed.
+ *
+ * @param {string} name - Category identifier ('transport', 'energy', 'food', 'lifestyle').
+ */
 function toggleCategory(name) {
   const fields   = document.getElementById(`${name}-fields`);
   const arrow    = document.getElementById(`arrow-${name}`);
@@ -286,6 +445,11 @@ function toggleCategory(name) {
   header.setAttribute('aria-expanded', (!collapsed).toString());
 }
 
+/**
+ * Select a diet type button and update the hidden input.
+ *
+ * @param {string} diet - Diet identifier (e.g. 'vegan', 'omnivore').
+ */
 function selectDiet(diet) {
   document.querySelectorAll('.diet-btn').forEach(b => {
     b.classList.toggle('active', b.dataset.diet === diet);
@@ -294,6 +458,12 @@ function selectDiet(diet) {
   document.getElementById('diet_type').value = diet;
 }
 
+/**
+ * Update a range slider's label text and gradient track background.
+ *
+ * @param {string} sliderId - The ``id`` of the ``<input type="range">``.
+ * @param {string} labelId  - The ``id`` of the label ``<span>`` to update.
+ */
 function updateSliderLabel(sliderId, labelId) {
   const slider = document.getElementById(sliderId);
   const label  = document.getElementById(labelId);
@@ -314,6 +484,13 @@ function updateSliderLabel(sliderId, labelId) {
 }
 
 // ─── AI Insights ──────────────────────────────────────────────────────────────
+
+/**
+ * Fetch AI-generated insights from the backend and render them.
+ * Redirects to the calculator section if no footprint data exists yet.
+ *
+ * @returns {Promise<void>}
+ */
 async function loadInsights() {
   if (!STATE.carbonData) {
     showToast('⚠️ Calculate your footprint first!', 'info');
@@ -345,6 +522,11 @@ async function loadInsights() {
   }
 }
 
+/**
+ * Render AI insight cards (summary, top actions, quick wins, goal setter).
+ *
+ * @param {Object} data - The insights result from the API.
+ */
 function renderInsights(data) {
   document.getElementById('insights-content').classList.remove('hidden');
   document.getElementById('ai-summary-text').textContent    = data.summary || '';
@@ -367,6 +549,12 @@ function renderInsights(data) {
   updateGoalPreview();
 }
 
+/**
+ * Pre-fill the progress tracker form with an action from the insights panel.
+ *
+ * @param {string} action   - The action description to pre-fill.
+ * @param {number} impactKg - The annual impact in kg CO₂ (divided by 365 for daily).
+ */
 function logActionFromInsight(action, impactKg) {
   showSection('tracker');
   document.getElementById('custom-activity-desc').value  = action;
@@ -375,6 +563,11 @@ function logActionFromInsight(action, impactKg) {
 }
 
 // ─── Goal Setting ─────────────────────────────────────────────────────────────
+
+/**
+ * Recalculate and display the goal preview whenever the reduction slider
+ * or timeline dropdown changes.
+ */
 function updateGoalPreview() {
   const slider   = document.getElementById('goal-reduction');
   const label    = document.getElementById('goal-reduction-label');
@@ -391,12 +584,17 @@ function updateGoalPreview() {
   const reduction = Math.round(current * pct / 100);
   const target    = Math.round(current - reduction);
   const monthly   = Math.round(reduction / months);
-  const trees     = Math.round(reduction / 21);
+  const trees     = Math.round(reduction / TREE_ABSORPTION_KG);
   preview.innerHTML = `📊 <strong>Current:</strong> ${current.toLocaleString()} kg/yr &nbsp;→&nbsp; <strong>Target:</strong> ${target.toLocaleString()} kg/yr<br/>
     💪 Reduce by <strong>${reduction.toLocaleString()} kg</strong> over <strong>${months} months</strong> (~${monthly} kg/month)<br/>
     🌳 Equivalent to planting <strong>${trees} trees</strong>`;
 }
 
+/**
+ * Persist the user's reduction goal to localStorage and show confirmation.
+ *
+ * @returns {Promise<void>}
+ */
 async function commitToGoal() {
   if (!STATE.carbonData) { showToast('⚠️ Calculate your footprint first!', 'info'); return; }
   const pct       = parseFloat(document.getElementById('goal-reduction').value);
@@ -408,6 +606,11 @@ async function commitToGoal() {
 }
 
 // ─── Map (Leaflet.js + OpenStreetMap — free, no API key) ─────────────────────
+
+/**
+ * Initialise the Leaflet map with CartoDB dark tiles.
+ * Attempts to geolocate the user; falls back to Hyderabad, India.
+ */
 function initMap() {
   if (STATE.map) return;
 
@@ -438,7 +641,7 @@ function initMap() {
         STATE.map.setView([lat, lng], 14);
         // User location marker (green dot)
         L.circleMarker([lat, lng], {
-          radius: 10, fillColor: '#10b981', color: '#fff', weight: 2, fillOpacity: 1,
+          radius: 10, fillColor: COLOR_SCORE_HIGH, color: '#fff', weight: 2, fillOpacity: 1,
         }).addTo(STATE.map).bindPopup('<div style="color:#0a1020"><b>📍 You are here</b></div>');
         searchNearbyEV(lat, lng);
       },
@@ -449,7 +652,13 @@ function initMap() {
   }
 }
 
-// Overpass API — free, no API key, real EV charging station data
+/**
+ * Query the Overpass API for EV charging stations near a location.
+ *
+ * @param {number} lat - Latitude.
+ * @param {number} lng - Longitude.
+ * @returns {Promise<void>}
+ */
 async function searchNearbyEV(lat, lng) {
   const query = `[out:json][timeout:15];
 node["amenity"="charging_station"](around:5000,${lat},${lng});
@@ -473,6 +682,13 @@ out body 12;`;
   }
 }
 
+/**
+ * Query the Overpass API for green spaces / parks near a location.
+ *
+ * @param {number} lat - Latitude (optional, defaults to map centre).
+ * @param {number} lng - Longitude (optional, defaults to map centre).
+ * @returns {Promise<void>}
+ */
 async function searchNearbyParks(lat, lng) {
   const center = STATE.map ? STATE.map.getCenter() : { lat, lng };
   const clat   = lat ?? center.lat;
@@ -502,6 +718,17 @@ out center body 10;`;
   }
 }
 
+/**
+ * Add a styled emoji marker to the Leaflet map.
+ *
+ * @param {number} lat     - Marker latitude.
+ * @param {number} lng     - Marker longitude.
+ * @param {string} emoji   - Emoji to display in the marker.
+ * @param {string} color   - Background colour for the marker circle.
+ * @param {string} name    - Place name (shown in popup).
+ * @param {string} address - Place address/operator (shown in popup).
+ * @returns {Object} The Leaflet marker instance.
+ */
 function addLeafletMarker(lat, lng, emoji, color, name, address) {
   const icon = L.divIcon({
     html: `<div style="background:${color};border-radius:50%;width:34px;height:34px;display:flex;align-items:center;justify-content:center;font-size:16px;border:2px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,0.5)">${emoji}</div>`,
@@ -518,11 +745,20 @@ function addLeafletMarker(lat, lng, emoji, color, name, address) {
   return marker;
 }
 
+/**
+ * Remove all markers and polylines from the Leaflet map.
+ */
 function clearMarkers() {
   STATE.mapMarkers.forEach(m => STATE.map?.removeLayer(m));
   STATE.mapMarkers = [];
 }
 
+/**
+ * Render a list of nearby places in the map sidebar.
+ *
+ * @param {Array<Object>} places - Array of place objects.
+ * @param {string}        emoji  - Emoji prefix for each list item.
+ */
 function renderPlacesList(places, emoji) {
   const list = document.getElementById('nearby-places-list');
   list.innerHTML = places.length
@@ -536,10 +772,21 @@ function renderPlacesList(places, emoji) {
     : '<p style="color:#64748b;font-size:0.8rem;padding:8px">No places found nearby.</p>';
 }
 
+/**
+ * Pan the Leaflet map to a specific coordinate.
+ *
+ * @param {number} lat - Target latitude.
+ * @param {number} lng - Target longitude.
+ */
 function panToPlace(lat, lng) {
   STATE.map?.setView([lat, lng], 16);
 }
 
+/**
+ * Toggle a map filter layer (EV, parks, transit, bike) on or off.
+ *
+ * @param {string} layer - Layer identifier ('ev', 'parks', 'transit', 'bike').
+ */
 function toggleMapLayer(layer) {
   STATE.activeMapLayers[layer] = !STATE.activeMapLayers[layer];
   const chip = document.getElementById(`chip-${layer}`);
@@ -554,7 +801,11 @@ function toggleMapLayer(layer) {
   if (layer === 'bike')   showToast('🚲 Cycling routes: see OpenCycleMap or Google Maps for bike lanes.', 'info');
 }
 
-// Nominatim geocoder — free, OpenStreetMap
+/**
+ * Geocode a search query via Nominatim and pan the map to the result.
+ *
+ * @returns {Promise<void>}
+ */
 async function searchMapLocation() {
   const input = document.getElementById('map-search-input').value.trim();
   if (!input || !STATE.map) return;
@@ -574,7 +825,12 @@ async function searchMapLocation() {
   } catch { showToast('❌ Search failed. Check your connection.', 'error'); }
 }
 
-// Route carbon comparison — Nominatim for geocoding, haversine for distance
+/**
+ * Compare carbon emissions across different transport modes for a route.
+ * Uses Nominatim for geocoding and the Haversine formula for distance.
+ *
+ * @returns {Promise<void>}
+ */
 async function compareRoutes() {
   const from = document.getElementById('route-from').value.trim();
   const to   = document.getElementById('route-to').value.trim();
@@ -631,18 +887,39 @@ async function compareRoutes() {
   }
 }
 
-// Haversine great-circle distance in km
+/**
+ * Calculate great-circle distance between two coordinates using the
+ * Haversine formula.
+ *
+ * @param {number} lat1 - Start latitude in degrees.
+ * @param {number} lng1 - Start longitude in degrees.
+ * @param {number} lat2 - End latitude in degrees.
+ * @param {number} lng2 - End longitude in degrees.
+ * @returns {number} Distance in kilometres.
+ */
 function haversineKm(lat1, lng1, lat2, lng2) {
-  const R    = 6371;
   const dLat = (lat2 - lat1) * Math.PI / 180;
   const dLng = (lng2 - lng1) * Math.PI / 180;
   const a    = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLng/2)**2;
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  return EARTH_RADIUS_KM * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
 }
 
 // ─── Progress Tracker ─────────────────────────────────────────────────────────
-function logPreset(description, type, co2Saved) { logActivity(description, type, co2Saved); }
 
+/**
+ * Log a preset green action (shortcut for the preset buttons).
+ *
+ * @param {string} description - Human-readable action description.
+ * @param {string} type        - Category ('transport', 'energy', 'food', 'lifestyle').
+ * @param {number} co2Saved    - Kilograms of CO₂ saved.
+ */
+function logPreset(description, type, co2Saved) {
+  logActivity(description, type, co2Saved);
+}
+
+/**
+ * Validate and log a custom activity from the tracker form inputs.
+ */
 function logCustomActivity() {
   const desc  = document.getElementById('custom-activity-desc').value.trim();
   const type  = document.getElementById('custom-activity-type').value;
@@ -654,6 +931,15 @@ function logCustomActivity() {
   document.getElementById('custom-co2-saved').value     = '';
 }
 
+/**
+ * Core activity logging function — persists locally, updates streak,
+ * and syncs to the backend.
+ *
+ * @param {string} description - What the user did.
+ * @param {string} type        - Category identifier.
+ * @param {number} co2Saved    - Kilograms of CO₂ saved.
+ * @returns {Promise<void>}
+ */
 async function logActivity(description, type, co2Saved) {
   const entry = {
     session_id: STATE.sessionId, activity_type: type,
@@ -661,7 +947,7 @@ async function logActivity(description, type, co2Saved) {
   };
   STATE.activityLog.unshift(entry);
   STATE.totalSaved = parseFloat((STATE.totalSaved + co2Saved).toFixed(2));
-  localStorage.setItem('eco_activity_log', JSON.stringify(STATE.activityLog.slice(0, 100)));
+  localStorage.setItem('eco_activity_log', JSON.stringify(STATE.activityLog.slice(0, MAX_LOCAL_LOG_ENTRIES)));
   localStorage.setItem('eco_total_saved',  STATE.totalSaved.toString());
 
   const today = new Date().toDateString();
@@ -679,19 +965,23 @@ async function logActivity(description, type, co2Saved) {
     await fetch(`${API}/log-activity`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(entry),
     });
-    // Debounced stats reload (5s delay to avoid hammering the server)
+    // Debounced stats reload
     clearTimeout(window._statsDebounce);
-    window._statsDebounce = setTimeout(loadPlatformStats, 5000);
+    window._statsDebounce = setTimeout(loadPlatformStats, STATS_DEBOUNCE_MS);
   } catch { /* offline — local state already updated */ }
 
   trackEvent('activity_logged', { type, co2_saved: co2Saved });
 }
 
+/**
+ * Render the activity log list in the tracker section.
+ * Shows at most {@link MAX_VISIBLE_LOG_ENTRIES} entries.
+ */
 function renderActivityLog() {
   const list  = document.getElementById('activity-log-list');
   const icons = { transport:'🚗', energy:'⚡', food:'🥗', lifestyle:'🛍️' };
   list.innerHTML = STATE.activityLog.length
-    ? STATE.activityLog.slice(0, 20).map(a => `
+    ? STATE.activityLog.slice(0, MAX_VISIBLE_LOG_ENTRIES).map(a => `
         <div class="log-entry" role="listitem">
           <span class="log-entry-icon">${icons[a.activity_type] || '🌱'}</span>
           <div class="log-entry-text">
@@ -703,11 +993,14 @@ function renderActivityLog() {
     : '<p style="color:#475569;font-size:0.85rem;padding:8px">No activities yet. Start with a preset above!</p>';
 }
 
+/**
+ * Render the 14-day CO₂ reduction progress chart using Google Charts.
+ */
 function renderProgressChart() {
   if (!STATE.chartsLoaded) return;
   const today = new Date();
   const days  = [], saved = [];
-  for (let i = 13; i >= 0; i--) {
+  for (let i = PROGRESS_CHART_DAYS - 1; i >= 0; i--) {
     const d      = new Date(today); d.setDate(today.getDate() - i);
     const label  = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
     const total  = STATE.activityLog
@@ -730,11 +1023,21 @@ function renderProgressChart() {
   });
 }
 
+/**
+ * Update the streak counter display in the tracker section.
+ */
 function updateStreakDisplay() {
   document.getElementById('streak-count').textContent = STATE.streak;
 }
 
 // ─── Badges System ────────────────────────────────────────────────────────────
+
+/**
+ * Badge definitions — each has an id, emoji, display name, and a
+ * condition function that returns true when earned.
+ *
+ * @type {Array<{id: string, emoji: string, name: string, condition: function(): boolean}>}
+ */
 const BADGES = [
   { id: 'first_step',  emoji: '🌱', name: 'First Step',   condition: () => STATE.activityLog.length >= 1 },
   { id: 'eco5',        emoji: '♻️', name: '5 Actions',    condition: () => STATE.activityLog.length >= 5 },
@@ -747,6 +1050,10 @@ const BADGES = [
   { id: 'eco_score80', emoji: '🌟', name: 'Eco Hero',     condition: () => STATE.carbonData?.eco_score >= 80 },
 ];
 
+/**
+ * Check all badge conditions, award new badges, and re-render the
+ * badges grid.
+ */
 function updateBadges() {
   const grid   = document.getElementById('badges-grid');
   const earned = JSON.parse(localStorage.getItem('eco_badges') || '[]');
@@ -766,6 +1073,12 @@ function updateBadges() {
 }
 
 // ─── Community Leaderboard ────────────────────────────────────────────────────
+
+/**
+ * Fetch and render the community leaderboard from the backend.
+ *
+ * @returns {Promise<void>}
+ */
 async function loadLeaderboard() {
   const list = document.getElementById('leaderboard-list');
   list.innerHTML = '<p style="color:#64748b;padding:16px;text-align:center">Loading...</p>';
@@ -792,6 +1105,12 @@ async function loadLeaderboard() {
 }
 
 // ─── Platform Stats ───────────────────────────────────────────────────────────
+
+/**
+ * Fetch platform-wide statistics and update hero counters and community cards.
+ *
+ * @returns {Promise<void>}
+ */
 async function loadPlatformStats() {
   try {
     const res  = await fetch(`${API}/stats`);
@@ -808,6 +1127,11 @@ async function loadPlatformStats() {
 }
 
 // ─── Google Charts Geo Chart ─────────────────────────────────────────────────
+
+/**
+ * Render the global impact geo chart using Google Charts.
+ * Uses sample engagement data for demonstration.
+ */
 function renderGeoChart() {
   if (!STATE.chartsLoaded || !document.getElementById('geo-chart')) return;
   const data = google.visualization.arrayToDataTable([
@@ -824,6 +1148,12 @@ function renderGeoChart() {
 }
 
 // ─── AI Chat ──────────────────────────────────────────────────────────────────
+
+/**
+ * Send a chat message to the EcoGuide AI backend and display the response.
+ *
+ * @returns {Promise<void>}
+ */
 async function sendChatMessage() {
   const input   = document.getElementById('chat-input');
   const msg     = input.value.trim();
@@ -860,6 +1190,12 @@ async function sendChatMessage() {
   }
 }
 
+/**
+ * Append a chat message bubble to the messages container.
+ *
+ * @param {string} text - The message content (supports basic Markdown).
+ * @param {string} role - Either ``'user'`` or ``'bot'``.
+ */
 function addChatMessage(text, role) {
   const messages = document.getElementById('chat-messages');
   const div      = document.createElement('div');
@@ -877,6 +1213,9 @@ function addChatMessage(text, role) {
   messages.scrollTop = messages.scrollHeight;
 }
 
+/**
+ * Show a typing indicator bubble in the chat while awaiting a response.
+ */
 function addTypingIndicator() {
   const messages = document.getElementById('chat-messages');
   const div = document.createElement('div');
@@ -892,13 +1231,59 @@ function addTypingIndicator() {
   messages.scrollTop = messages.scrollHeight;
 }
 
-function removeTypingIndicator() { document.getElementById('typing-indicator')?.remove(); }
-function hideSuggestions()       { document.getElementById('chat-suggestions').style.display = 'none'; }
-function sendSuggestion(text)    { document.getElementById('chat-input').value = text; sendChatMessage(); }
-function handleChatKey(e)        { if (e.key==='Enter' && !e.shiftKey) { e.preventDefault(); sendChatMessage(); } }
-function autoResizeTextarea(el)  { el.style.height = 'auto'; el.style.height = Math.min(el.scrollHeight, 120) + 'px'; }
+/**
+ * Remove the typing indicator from the chat messages.
+ */
+function removeTypingIndicator() {
+  document.getElementById('typing-indicator')?.remove();
+}
+
+/**
+ * Hide the chat suggestion chips after the user sends a message.
+ */
+function hideSuggestions() {
+  document.getElementById('chat-suggestions').style.display = 'none';
+}
+
+/**
+ * Pre-fill and send a suggested chat message.
+ *
+ * @param {string} text - The suggestion text to send.
+ */
+function sendSuggestion(text) {
+  document.getElementById('chat-input').value = text;
+  sendChatMessage();
+}
+
+/**
+ * Handle keyboard events in the chat textarea (Enter to send).
+ *
+ * @param {KeyboardEvent} e - The keydown event.
+ */
+function handleChatKey(e) {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    sendChatMessage();
+  }
+}
+
+/**
+ * Auto-resize the chat textarea based on its scroll height.
+ *
+ * @param {HTMLTextAreaElement} el - The textarea element.
+ */
+function autoResizeTextarea(el) {
+  el.style.height = 'auto';
+  el.style.height = Math.min(el.scrollHeight, CHAT_TEXTAREA_MAX_HEIGHT) + 'px';
+}
 
 // ─── Chat Context Sidebar ─────────────────────────────────────────────────────
+
+/**
+ * Update the chat sidebar with the user's current carbon footprint context.
+ *
+ * @param {Object} [data] - Carbon result data (defaults to STATE.carbonData).
+ */
 function updateChatContext(data) {
   data = data || STATE.carbonData;
   const div = document.getElementById('chat-context-display');
@@ -914,17 +1299,32 @@ function updateChatContext(data) {
 }
 
 // ─── Nav Score ────────────────────────────────────────────────────────────────
+
+/**
+ * Update the eco-score display in the navigation bar.
+ *
+ * @param {number|null} [score] - The eco score to display (defaults to STATE).
+ */
 function updateNavScore(score) {
   score = score ?? STATE.carbonData?.eco_score ?? null;
   const el = document.getElementById('nav-eco-score');
   if (score !== null) {
     el.textContent = score;
-    el.style.color = score > 70 ? '#10b981' : score > 40 ? '#f59e0b' : '#ef4444';
+    el.style.color = score > 70 ? COLOR_SCORE_HIGH : score > 40 ? COLOR_SCORE_MID : COLOR_SCORE_LOW;
   }
 }
 
 // ─── Toast ────────────────────────────────────────────────────────────────────
+
+/** @type {number|null} Timer ID for the current toast auto-hide */
 let _toastTimer = null;
+
+/**
+ * Display a toast notification message.
+ *
+ * @param {string} message - The notification text.
+ * @param {string} [type='info'] - Toast type ('info', 'success', 'error').
+ */
 function showToast(message, type = 'info') {
   const toast = document.getElementById('toast');
   toast.textContent = message;
@@ -934,12 +1334,20 @@ function showToast(message, type = 'info') {
 }
 
 // ─── Number Animation ─────────────────────────────────────────────────────────
+
+/**
+ * Animate a number from 0 to a target value with easing.
+ *
+ * @param {HTMLElement}  el       - The DOM element to update.
+ * @param {number}       target   - The target value to animate towards.
+ * @param {string}       [suffix=''] - Text appended after the number.
+ * @param {number}       [decimals=0] - Number of decimal places.
+ */
 function animateNumber(el, target, suffix = '', decimals = 0) {
   if (!el) return;
-  const dur   = 1500;
   const start = performance.now();
   const step  = now => {
-    const p = Math.min((now - start) / dur, 1);
+    const p = Math.min((now - start) / NUMBER_ANIMATION_DURATION_MS, 1);
     const v = target * (1 - Math.pow(1 - p, 3));
     el.textContent = (decimals > 0 ? v.toFixed(decimals) : Math.round(v)).toLocaleString() + suffix;
     if (p < 1) requestAnimationFrame(step);
@@ -947,23 +1355,53 @@ function animateNumber(el, target, suffix = '', decimals = 0) {
   requestAnimationFrame(step);
 }
 
-function animateHeroCounters() { loadPlatformStats(); }
-function setText(id, value)    { const el = document.getElementById(id); if (el) el.textContent = (value||'--').toLocaleString(); }
+/**
+ * Trigger hero counter animations by reloading platform stats.
+ */
+function animateHeroCounters() {
+  loadPlatformStats();
+}
+
+/**
+ * Set the text content of an element by ID.
+ *
+ * @param {string}       id    - The element's DOM ID.
+ * @param {string|number} value - The value to display (defaults to '--').
+ */
+function setText(id, value) {
+  const el = document.getElementById(id);
+  if (el) el.textContent = (value || '--').toLocaleString();
+}
 
 // ─── Google Analytics Event Tracking ─────────────────────────────────────────
+
+/**
+ * Send a custom event to Google Analytics 4 and GTM dataLayer.
+ *
+ * @param {string} name   - The event name.
+ * @param {Object} params - Key-value pairs of event parameters.
+ */
 function trackEvent(name, params) {
   if (typeof gtag === 'function') gtag('event', name, params);
   if (window.dataLayer) window.dataLayer.push({ event: `ecotrack_${name}`, ...params });
 }
 
 // ─── Keyboard Shortcuts ───────────────────────────────────────────────────────
+
+/**
+ * Global keyboard shortcut handler (Alt+key for section navigation).
+ */
 document.addEventListener('keydown', e => {
   if (!e.altKey) return;
   const map = { c:'calculator', i:'insights', m:'map', t:'tracker', l:'community', h:'chat' };
   if (map[e.key?.toLowerCase()]) { e.preventDefault(); showSection(map[e.key.toLowerCase()]); }
 });
 
-// ─── Nav links mobile ID fix ──────────────────────────────────────────────────
+// ─── Nav Links Mobile ID Fix ──────────────────────────────────────────────────
+
+/**
+ * Ensure the nav-links container has an ID for mobile menu toggling.
+ */
 document.addEventListener('DOMContentLoaded', () => {
   const links = document.querySelector('.nav-links');
   if (links && !links.id) links.id = 'nav-links';
