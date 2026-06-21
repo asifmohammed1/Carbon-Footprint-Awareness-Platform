@@ -16,12 +16,20 @@ from __future__ import annotations
 
 import asyncio
 import json
-import logging
 from typing import Any, Dict, List, Optional, Tuple
 
 import google.generativeai as genai
 
 from config import GEMINI_API_KEY, TREE_ABSORPTION_KG, logger
+
+# ─── Public API ───────────────────────────────────────────────────────────────
+
+__all__ = [
+    "generate_offline_insights",
+    "get_offline_response",
+    "get_gemini_response",
+    "get_ai_insights",
+]
 
 # ─── Gemini Model Initialisation ──────────────────────────────────────────────
 

@@ -9,6 +9,7 @@ mounts, etc.).
 
 import asyncio
 import datetime
+import re
 from pathlib import Path
 from typing import Dict
 
@@ -20,6 +21,15 @@ from calculator import calculate_carbon
 from config import MAPS_API_KEY, TREE_ABSORPTION_KG, logger
 from models import ActivityLog, CarbonInput, ChatMessage, GoalInput
 from storage import DataStore
+
+# ─── Public API ───────────────────────────────────────────────────────────────
+
+__all__ = ["router", "store"]
+
+# ─── Constants ────────────────────────────────────────────────────────────────
+
+_SESSION_ID_PATTERN: re.Pattern[str] = re.compile(r"^[\w\-]{1,128}$")
+"""Regex for validating session_id path parameters."""
 
 # ─── Shared State ─────────────────────────────────────────────────────────────
 # Instantiated once at import time; the ``app`` module also holds a reference
@@ -173,7 +183,15 @@ async def get_history(session_id: str) -> Dict:
     """O(k) lookup using the activity index (k = activities for this session).
 
     Avoids scanning the entire activities list.
+
+    Raises:
+        HTTPException: 400 if session_id format is invalid.
     """
+    if not _SESSION_ID_PATTERN.match(session_id):
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid session_id format. Use alphanumeric, hyphens, or underscores (1-128 chars).",
+        )
     indices = store.activity_index.get(session_id, [])
     activities = [
         store.activities[i]

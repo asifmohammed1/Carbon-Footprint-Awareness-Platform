@@ -37,6 +37,10 @@ from slowapi.util import get_remote_address
 from config import ALLOWED_ORIGINS, DATA_FILE, PORT, logger
 from routes import router, store
 
+# ─── Public API ───────────────────────────────────────────────────────────────
+
+__all__ = ["app"]
+
 # ─── Rate Limiter ─────────────────────────────────────────────────────────────
 
 limiter = Limiter(key_func=get_remote_address, default_limits=["300/hour"])
@@ -75,6 +79,12 @@ async def add_security_headers(request: Request, call_next):
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["X-XSS-Protection"] = "1; mode=block"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Strict-Transport-Security"] = (
+        "max-age=31536000; includeSubDomains"
+    )
+    response.headers["Permissions-Policy"] = (
+        "camera=(), microphone=(), geolocation=(self), payment=()"
+    )
     response.headers["Content-Security-Policy"] = (
         "default-src 'self'; "
         "script-src 'self' 'unsafe-inline' 'unsafe-eval' "

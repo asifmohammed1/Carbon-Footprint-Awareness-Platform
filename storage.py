@@ -16,6 +16,10 @@ from typing import Any, Dict, List, Optional
 
 from config import DATA_FILE, STATS_CACHE_TTL_SEC, logger
 
+# ─── Public API ───────────────────────────────────────────────────────────────
+
+__all__ = ["DataStore"]
+
 
 class DataStore:
     """Thread-safe, async-aware data store backed by a JSON file.

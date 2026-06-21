@@ -23,8 +23,8 @@ COPY . .
 # Create data directory for JSON storage
 RUN mkdir -p data
 
-# Expose port (Cloud Run sets PORT automatically)
-EXPOSE 8080
+# Expose port (default PORT is 8000; Cloud Run overrides via $PORT)
+EXPOSE 8000
 
 # Healthcheck — polls the /api/health endpoint every 30 seconds
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \

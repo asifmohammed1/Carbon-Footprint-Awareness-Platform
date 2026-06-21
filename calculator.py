@@ -10,7 +10,6 @@ returns typed dictionaries.
 """
 
 import datetime
-from typing import Dict
 
 from config import (
     CAR_FACTORS,
@@ -29,6 +28,10 @@ from config import (
     WASTE_FACTOR,
 )
 from models import CarbonInput, CarbonResult
+
+# ─── Public API ───────────────────────────────────────────────────────────────
+
+__all__ = ["calculate_carbon"]
 
 
 def calculate_carbon(data: CarbonInput) -> CarbonResult:

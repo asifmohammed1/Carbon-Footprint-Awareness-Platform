@@ -13,6 +13,33 @@ from typing import List
 
 from dotenv import load_dotenv
 
+# ─── Public API ───────────────────────────────────────────────────────────────
+
+__all__ = [
+    "GEMINI_API_KEY",
+    "MAPS_API_KEY",
+    "PORT",
+    "DATA_FILE",
+    "ALLOWED_ORIGINS",
+    "MAX_MESSAGE_LENGTH",
+    "STATS_CACHE_TTL_SEC",
+    "TREE_ABSORPTION_KG",
+    "GLOBAL_AVG_KG",
+    "US_AVG_KG",
+    "CAR_FACTORS",
+    "FLIGHT_FACTORS",
+    "FLIGHT_DISTANCES",
+    "DIET_FACTORS",
+    "PT_FACTOR",
+    "ELEC_FACTOR",
+    "GAS_FACTOR",
+    "WASTE_FACTOR",
+    "CLOTHING_FACTOR",
+    "ORDER_FACTOR",
+    "STREAM_FACTOR",
+    "logger",
+]
+
 # ─── Load .env ────────────────────────────────────────────────────────────────
 
 load_dotenv()

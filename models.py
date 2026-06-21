@@ -13,6 +13,24 @@ from pydantic import BaseModel, Field
 
 from config import MAX_MESSAGE_LENGTH
 
+# ─── Public API ───────────────────────────────────────────────────────────────
+
+__all__ = [
+    "TransportBreakdown",
+    "EnergyBreakdown",
+    "FoodBreakdown",
+    "LifestyleBreakdown",
+    "BreakdownDict",
+    "ComparisonDict",
+    "CarbonResult",
+    "ActionItem",
+    "InsightsResult",
+    "CarbonInput",
+    "ChatMessage",
+    "ActivityLog",
+    "GoalInput",
+]
+
 # ─── TypedDict Definitions (structured return types) ──────────────────────────
 
 
